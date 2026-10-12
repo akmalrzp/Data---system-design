@@ -5,6 +5,7 @@ Conventions for the OSDM system design wiki. Read this first.
 ## Wiki location
 - Wiki root: `wiki/`
 - Raw sources: `raw/` (sibling of `wiki/`; immutable)
+- QnA files: `qna/` (ignored for the single file)
 
 ## Purpose
 A technology-neutral guide to designing independent, integrated modules that share reference data (domain: Organisasi & Sumber Daya Manusia). Readers: architects and developers. Modules A, B, C, D are illustrative.
