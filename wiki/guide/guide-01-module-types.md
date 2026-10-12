@@ -4,7 +4,7 @@ title: "1. Module types"
 tags: [guide]
 sources: [osdm-integration-summary,api-design-for-system-integration,author-decisions-2026-10-09]
 created: 2026-10-09
-updated: 2026-10-09
+updated: 2026-10-12
 ---
 
 # 1. Module types
@@ -26,3 +26,4 @@ Modules are classified per entity by their relationship to the data: owner, cons
 - [edge-case-circular-dependencies](../modules/edge-case-circular-dependencies.md)
 - [edge-case-owner-unavailable](../modules/edge-case-owner-unavailable.md)
 - [edge-case-business-key-vs-id](../modules/edge-case-business-key-vs-id.md)
+- [edge-case-divergent-reference-caches](../modules/edge-case-divergent-reference-caches.md)

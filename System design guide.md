@@ -28,6 +28,7 @@ Technology-neutral guide for architects and developers. Generated from the atomi
   - [Edge case: circular dependencies](#edge-case-circular-dependencies)
   - [Edge case: owner unavailable](#edge-case-owner-unavailable)
   - [Edge case: business key vs ID](#edge-case-business-key-vs-id)
+  - [Edge case: divergent reference caches](#edge-case-divergent-reference-caches)
 - [2. Table types and accountability](#guide-02-table-types)
   - [Master reference table (owner)](#table-master-reference)
   - [Cache of master reference (consumer)](#table-master-cache)
@@ -317,6 +318,7 @@ Example: D stores "required employees per unit". `unit_id` identifies the requir
   - Hierarchy change: roll-up totals change; read `parent_unit_id` from the local cache ([Edge case: hierarchy changes](#edge-case-hierarchy-changes)).
 - If it needs derived data from another owner (headcount per unit from A), keep a projection, not copies ([Projection table](#table-projection)).
 - Show "as of" timestamps on projections ([Eventual consistency and freshness](#eventual-consistency)).
+- If another module emits the events the projection counts, its cache of the owner may differ from yours: [Edge case: divergent reference caches](#edge-case-divergent-reference-caches).
 
 **Impact of owner lifecycle**: high. Agree the lifecycle contract with the owner early.
 
@@ -345,6 +347,7 @@ Rules:
 - The events must carry what the projection needs, including previous values (a transfer event includes `previous_unit_id`, so the old unit is decremented).
 - The projection must be rebuildable from the owner's events or API ([Projection table](#table-projection)).
 - Display "as of" timestamps.
+- Do not reject the owner's events against your own cache of a third module; see [Edge case: divergent reference caches](#edge-case-divergent-reference-caches).
 - Alternative: call the owner's read API when exactness at read time matters. See [Decision: subscribe to events or call the owner on demand](#decision-subscribe-vs-call-on-demand).
 
 <a id="external-reference-owner"></a>
@@ -431,6 +434,55 @@ Rules:
 - Join on IDs. Expose business keys as attributes only.
 - Enforce uniqueness of the business key in the owner, with effective dating if it can be reused over time.
 - External standard codes may be the key for external reference sets under the conditions in [External reference sets](#external-reference-sets).
+
+<a id="edge-case-divergent-reference-caches"></a>
+
+## Edge case: divergent reference caches
+
+Two consumers cache the same owner's entity, and one of them emits events that the other interprets through its own copy. They can disagree for a while.
+
+Example: A and D both subscribe to C's units. A validates assignments against its cache of C and emits `employee.changed` with `unit_id`. D keeps a headcount projection `unit_id -> active count` ([Projection holder](#projection-module)) and reads unit status and `parent_unit_id` from its own cache of C.
+
+This page is design reasoning, not from a cited source.
+
+### Who is authoritative
+- C is authoritative for what a unit is (exists, active, name, parent).
+- A is authoritative for which unit an employee is assigned to.
+- Neither A's nor D's cache of C is authoritative. Both are read-only copies ([Cache of master reference (consumer)](#table-master-cache)).
+- A does not send unit data to D. It sends `unit_id` only. D builds the projection itself.
+
+Both caches come from the same versioned stream, so a mismatch is normally lag: one copy is behind. Lasting divergence means a cache missed events.
+
+### Case 1: A's cache is ahead of D's
+C creates a unit. A learns of it first, accepts an assignment, and emits an event with a `unit_id` that D does not know yet.
+
+- D applies the count, keyed by `unit_id`. It does not reject A's event against its own cache: A already validated it. [Rule: validate IDs against the local cache](#rule-validate-ids-locally) applies to writes D accepts from its users, not to events from an owner.
+- D shows a placeholder for the unit and calls C's read API on the miss.
+- Roll-ups cannot place the count until D has the unit's `parent_unit_id` ([Edge case: hierarchy changes](#edge-case-hierarchy-changes)).
+
+### Case 2: D's cache is ahead of A's
+C marks a unit `inactive` or sets `replaced_by`. D learns of it first. A, still on the older copy, keeps assigning to the old unit.
+
+- D's count shows employees on an inactive unit. That matches what A holds, so the count is correct; the assignments are what need correcting.
+- D flags the unit. It does not move counts via `replaced_by` itself ([Use case: merge](#uc-merge), [Use case: split](#uc-split)).
+- When A reassigns, its events carry `previous_unit_id` and the count moves.
+- If A keeps assigning to the unit beyond normal lag, A's cache is stale or A is not processing C's lifecycle events. Alert on it ([Freshness and drift monitoring](#freshness-and-drift-monitoring)).
+
+### Case 3: lasting divergence
+A missed event or a bug leaves a cache wrong indefinitely.
+
+- A and D each reconcile their cache against C ([Flow: reconciliation](#flow-reconciliation)). Never reconcile one consumer's cache against another's.
+- D also reconciles its projection against A per unit (A's headcount read API, or a recount by range).
+
+### Optional: carry the version A validated against
+A adds the unit version it validated against (for example `unit_version`) to its assignment event. D compares it with its own cache:
+- A's version is newer: D re-fetches the unit from C.
+- D's version is newer: A acted on an older view; D can flag the record.
+
+This lets D tell lag from a real conflict without guessing. It is an additive field ([Rule: additive-only contract](#rule-additive-only-contract)).
+
+### Rule
+The projection trusts A for who sits where and C for what the unit is. D never checks A's facts against its own cache of C.
 
 <a id="guide-02-table-types"></a>
 
@@ -613,6 +665,8 @@ A scheduled comparison between a consumer's copy and the owner.
 3. Apply through the normal version-guarded path.
 4. Record the result (ranges checked, mismatches, repairs) for [Freshness and drift monitoring](#freshness-and-drift-monitoring).
 
+Reconcile each cache against the owner, never against another consumer's copy ([Edge case: divergent reference caches](#edge-case-divergent-reference-caches)).
+
 Frequency: nightly as a starting point; tune to freshness needs. Standard practice, unsourced in the research ([Source reliability](#source-reliability)).
 
 <a id="payload-thin-vs-fat-events"></a>
@@ -746,6 +800,7 @@ Before accepting a write that references another module's entity, validate the I
 - D validates the unit before accepting a requirement.
 - Unknown ID: reject, or accept as pending and re-validate, per business rule ([Edge case: owner unavailable](#edge-case-owner-unavailable)).
 - No cross-system foreign key constraints.
+- This rule covers writes a module accepts from its users. It does not apply to events from an owner: those were validated by the owner ([Edge case: divergent reference caches](#edge-case-divergent-reference-caches)).
 
 <a id="rule-deletes-as-state"></a>
 

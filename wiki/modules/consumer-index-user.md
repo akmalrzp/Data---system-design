@@ -4,7 +4,7 @@ title: "Consumer type 2: reference data as index"
 tags: [proposal,unverified]
 sources: [osdm-integration-summary]
 created: 2026-10-09
-updated: 2026-10-09
+updated: 2026-10-12
 ---
 
 # Consumer type 2: reference data as index
@@ -22,6 +22,7 @@ Example: D stores "required employees per unit". `unit_id` identifies the requir
   - Hierarchy change: roll-up totals change; read `parent_unit_id` from the local cache ([edge-case-hierarchy-changes](edge-case-hierarchy-changes.md)).
 - If it needs derived data from another owner (headcount per unit from A), keep a projection, not copies ([table-projection](../tables/table-projection.md)).
 - Show "as of" timestamps on projections ([eventual-consistency](../concepts/eventual-consistency.md)).
+- If another module emits the events the projection counts, its cache of the owner may differ from yours: [edge-case-divergent-reference-caches](edge-case-divergent-reference-caches.md).
 
 **Impact of owner lifecycle**: high. Agree the lifecycle contract with the owner early.
 
