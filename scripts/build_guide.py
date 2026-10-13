@@ -111,7 +111,7 @@ for hub in hubs:
             chunks.append(render(slug, False)); seen.add(slug)
             toc.append(f"  - [{pages[slug]['meta']['title']}](#{slug})")
 # normalise: hubs are H1 inside the doc, children H2, their subsections H3+
-(ROOT / "System design guide.md").write_text("\n".join(parts + toc + [""] + chunks), encoding="utf-8")
+(ROOT / "full-guide.md").write_text("\n".join(parts + toc + [""] + chunks), encoding="utf-8")
 
 missing = [s for s, p in pages.items() if p["meta"].get("type") not in ("source", "guide") and s not in seen]
 print(f"pages={len(pages)} in_guide={len(seen)} not_in_guide={missing}")
